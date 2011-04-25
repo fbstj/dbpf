@@ -12,7 +12,7 @@ namespace fbstj.dbpf.tests
         {
             FileStream fs = System.IO.File.Open(TEST_FILE, FileMode.Open);
             File f= new File(fs);
-            Console.WriteLine(f.MajorVersion + "." + f.MinorVersion);
+            Console.WriteLine(f.Index_Version);
             while (true) ;//keep open
         }
     }
