@@ -34,6 +34,12 @@
     <Compile Include="Program.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\DBPF.NET.csproj">
+      <Project>{16C8AEF5-E173-4903-93F7-63C87A388726}</Project>
+      <Name>DBPF.NET</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
     <Folder Include="Properties\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

@@ -1,5 +1,7 @@
 ﻿using System;
-using System.IO;
+using FileMode = System.IO.FileMode;
+using FileStream = System.IO.FileStream;
+using fbstj.dbpf;
 
 namespace fbstj.dbpf.tests
 {
@@ -8,12 +10,9 @@ namespace fbstj.dbpf.tests
         const string TEST_FILE = "../../NetworkAddonMod_IndividualNetworkRULs.dat";
         static void Main(string[] args)
         {
-            FileStream fs = File.Open(TEST_FILE, FileMode.Open);
-            byte[] buf = new byte[4];
-            fs.Seek(0, SeekOrigin.Begin);
-            fs.Read(buf, 0, 4);
-            foreach(byte b in buf)
-                Console.Write((char)b);
+            FileStream fs = System.IO.File.Open(TEST_FILE, FileMode.Open);
+            File f= new File(fs);
+            Console.WriteLine(f.MajorVersion + "." + f.MinorVersion);
             while (true) ;//keep open
         }
     }
