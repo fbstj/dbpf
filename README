@@ -1,0 +1,9 @@
+A set of python scripts for reading and writing [DBPF](http://en.wikipedia.org/wiki/DBPF_(file_format)) files
+
+`header.load(file)` parses the first 96 byte of `file` into a Header object
+
+`index.load(file, header)` parses the index of `file` into an array of tuples
+each tuple contains the TypeID, Group ID, and Instance ID, and the location and length of the file the TGI represents. The tuples are version dependent, but all have TGI's and offset/length.
+
+`dbpf` contains generic dbpf specific code
+`util` contains general utility methods 
