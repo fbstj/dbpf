@@ -19,13 +19,17 @@ header_type = util.nt('header_type', [
     ])
 
 header_struct = util.st("4s17i24s")
+
 header_file = util.nt('header_file', 'count offset size')
 header_file2 = util.nt('header_file2', ('version',) + header_file._fields)
 
 tgi = util.nt('tgi','type group instance')
 
-index_v0 = 5#[util.nt('index_v0', 't g i o l'), util.st('5I')]
-index_v1 = 6#[util.nt('index_v1', 't g i i2 o l'), util.st('6I')]
-#index_v3 = util.nt('_v3', '' )
-
-def index(version, string): return util.st(str(version)+'I').unpack(string)
+def index(version, string):
+    s = str({
+            7.0:'5I',
+            7.1:'6I'
+        }.get(version, ''))
+    if len(s) == 0:
+        raise exception("Version not supported", version)
+    return util.st(s).unpack(string)

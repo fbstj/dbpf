@@ -13,8 +13,8 @@ def _f(path = './default.dat', mode = 'rb'):
 if __name__ == '__main__':
     out = None
     try:
+        f = _f()
         f = _f('../DJEM.dat')
-        f = _f('../NAM_culdesac.dat')
         h = header.load(f)
         out = h.dump()
         i = index.load(f,h)

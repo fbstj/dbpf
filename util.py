@@ -9,7 +9,7 @@ def isFile(f):
 
 def isFileEX(f, e='Not a file'):
     if not isFile(f):
-        raise Exception(e)
+        raise Exception('Argument Exception',e)
 
 def seek(f,to,by=0):
     isFileEX(f);

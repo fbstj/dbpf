@@ -13,13 +13,8 @@ class Header(dbpf.header_type):
 
     @property
     def index(self):
-        i = {
-            'version':util.version(self.indexVersionMajor,self.indexVersionMinor),
-            'count':self.indexCount,
-            'offset':self.indexOffset,
-            'size':self.indexSize
-            }
-        return dbpf.header_file2(**i)
+        i = [ util.version(self.indexVersionMajor,self.indexVersionMinor), self.indexCount, self.indexOffset, self.indexSize ]
+        return dbpf.header_file2._make(i)
 
     @property
     def holes(self): return dbpf.header_file._make([self.holesCount, self.holesOffset, self.holesSize])
