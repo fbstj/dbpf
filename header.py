@@ -33,12 +33,12 @@ class Header(dbpf.header_type):
             'holes': self.holes._asdict()
             }
 
-def load(file):
-    util.isFileEX(file)
-    pos = util.seek(file,0)
+def load(fd):
+    util.isFileEX(fd)
+    pos = util.seek(fd,0)
     _h = dbpf.header_struct
-    h = Header._make(_h.unpack(file.read(_h.size)))
-    util.seek(file,pos)
+    h = Header._make(_h.unpack(fd.read(_h.size)))
+    util.seek(fd,pos)
     if h.magic != 'DBPF':
         raise dbpf.exception('Not DBPF file')
     return h
