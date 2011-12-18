@@ -33,6 +33,13 @@ class Header(namedtuple('Header',[ 'magic',
     def holes(self):
         return self.Index(0, self[12], self[13], self[14])
 
+    @property
+    def dir(self):
+        for r in self.records():
+            if r.tgi.type == 0xE86B1EEF:
+                return r
+        return None
+
     def __new__(self, fd):
         if not isinstance(fd, BufferedIOBase):
             raise ArgumentException('File', e)
@@ -54,6 +61,8 @@ class Header(namedtuple('Header',[ 'magic',
         return rs
     
     def record(self, id):
+        if self.version_major != 1:
+            raise DBPFException('blah')
         i = self.index
         if i.count < id + 1:
             raise DBPFException('Not enough records')
@@ -122,3 +131,7 @@ if __name__ == '__main__':
     _i = _h.records()
     _r = _h.record(0)
     _b = _h.file(_r)
+
+TypesByID = {
+    0xE86B1EEF: 'DIR'
+}
