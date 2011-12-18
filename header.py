@@ -1,44 +1,51 @@
-import util
-import dbpf
+import struct
+import json
+from sys import argv, stdin
 
+def is_dbpf(f):
+        "Checks if the file passed is a DBPF file"
+        h = struct.unpack("4s",f.read(4))
+        return h[0] == "DBPF"
 
-class Header(dbpf.header_type):
-    __slots__ = ()
+def header(fn = 'default.dat'):
+        f = open(fn, 'rb')
+        h = struct.unpack("4s17i24s", f.read(96))
 
-    @property
-    def version(self): return util.version(self.versionMajor, self.versionMinor)
+        def version(major, minor):
+                return float(".".join([str(major),str(minor)]))
 
-    @property
-    def user_version(self): return util.version(self.userVersionMajor, self.userVersionMinor)
+        if not is_dbpf(f):
+                raise Exception("blah")
 
-    @property
-    def index(self):
-        i = [ util.version(self.indexVersionMajor,self.indexVersionMinor), self.indexCount, self.indexOffset, self.indexSize ]
-        return dbpf.header_file2._make(i)
+        header = dict()
 
-    @property
-    def holes(self): return dbpf.header_file._make([self.holesCount, self.holesOffset, self.holesSize])
+        header['version'] = version(h[1],h[2])
+        header['userVersion'] = version(h[3],h[4])
+        header['flags'] = h[5]
+        header['ctime'] = h[6]
+        header['mtime'] = h[7]
 
-    @property
-    def magic(dbpf): return super().magic.decode()
+        index = dict()
+        index['version'] = version(h[8],h[15])
+        index['count'] = h[9]
+        index['offset'] = h[10] if (h[1]==1) else h[16]
+        index['size'] = h[11]
 
-    def dump(self):
-        return {
-            'version': self.version,
-            'userVersion': self.user_version,
-            'flags': self.flags,
-            'ctime': self.ctime,
-            'mtime': self.mtime,
-            'index': self.index._asdict(),
-            'holes': self.holes._asdict()
-            }
+        holes = dict()
+        holes['count'] = h[12]
+        holes['offset'] = h[13]
+        holes['size'] = h[14]
 
-def load(fd):
-    util.isFileEX(fd)
-    pos = util.seek(fd,0)
-    _h = dbpf.header_struct
-    h = Header._make(_h.unpack(fd.read(_h.size)))
-    util.seek(fd,pos)
-    if h.magic != 'DBPF':
-        raise dbpf.exception('Not DBPF file')
-    return h
+        header['index'] = index
+        header['holes'] = holes
+
+        return header
+        print json.dumps(header)
+
+if __name__ == '__main__':
+        try:
+                print json.dumps(header(*argv))
+        except Exception as e:
+                err = dict()
+                err['error'] = e.args
+                print json.dumps(err)
