@@ -1,13 +1,13 @@
-var DBPF = function(fd){ this._file = fd }
-DBPF.Header = function(){}
-DBPF.Index = function(){}
+require('DataView.extensions')
 
-DBPF.Header.prototype = {
-	Version: 1.0,
-	UserVersion: 0.0,
-	Flags:0, Ctime:0, Atime:0,
-	Index: { Version: 7.0, Count: 0, Offest: 0, Size: 0 },
-	Holes: { Count: 0, Offest: 0, Size: 0 },
+function DBPF_Header(){
+	this.Version = 1.0
+	this.UserVersion = 0.0
+	this.Flags = 0; this.Ctime = 0; this.Atime = 0
+	this.Index = { Version: 7.0, Count: 0, Offest: 0, Size: 0 }
+	this.Holes = { Count: 0, Offest: 0, Size: 0 }
+}
+DBPF_Header.prototype = {
 	serialize: function()
 	{	// serializes this into a 96 byte ArrayBuffer
 		var M = function(v){ return v.toString().split('.')[0] },
@@ -43,26 +43,30 @@ DBPF.Header.prototype = {
 		this.Holes.Count = words[12]
 		this.Holes.Offset = words[13]
 		this.Holes.Size = words[14]
-	}
+	},
 }
 
-DBPF.prototype = {
-	Header: new DBPF.Header(),
-	Index: new DBPF.Index(),
+var DBPF = function(fd){
+function F(){
+	this.Header = new DBPF_Header()
+	this.Index = []
+}
+F.prototype = {
+	_file: fd,
 	loadHeader: function() {
 		var fr = new FileReader(),
 			ab = fr.readAsArrayBuffer(this._file)
 		this.Header.deserialize(ab)
 	},
 	saveHeader: function(){
-		
+		var buf = this.Header.serialize()
 	},
-	loadIndex: function(){
-		
-	},
-	saveIndex: function(){
-		
-	}
+	loadIndex: function(){ },
+	saveIndex: function(){ }
 }
+	return new F()
+}
+DBPF.Header = function(){ return new DBPF_Header(arguments) }
+DBPF.Index = function(){ return new DBPF_Index(arguments) }
 
 module.exports = DBPF
