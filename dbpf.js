@@ -17,8 +17,8 @@ exports.Header = function(){ var o = {}; DBPF_Header.apply(o, arguments); return
 
 // bind to a buffer
 exports.Header.Load = function(){
-	var _ = this
-	function W(i){ return _.readUInt32BE(i*4) }
+var _ = this.slice(0, 96)
+function W(i){ return _.readUInt32LE(i*4) }
 	if (_.toString('ascii',0, 4) != "DBPF")
 		throw new TypeError("not a DBPF buffer")
 
@@ -27,15 +27,27 @@ exports.Header.Load = function(){
 							W(12), W(13), W(14) );
 }
 exports.Header.Save = function(h){
-	var _ = this
-	this.write("DBPF", 0, 4, 'ascii')
+var _ = this.slice(0, 96)
+	_.write("DBPF", 0, 4, 'ascii')
 	map.bind([
 		V.M(h.Version), V.m(h.Version),
 		V.M(h.UserVersion), V.m(h.UserVersion), h.Flags, h.Ctime, h.Atime,
 		V.M(h.Index.Version), h.Index.Count, h.Index.Offset, h.Index.Size,
 		h.Holes.Count, h.Holes.Offset, h.Holes.Size,
 		V.m(h.Index.Version), h.Index.Offset
-	])(function(i, v){ _.writeUInt32BE(v, 4*(Number(i)+1)) })
+	])(function(i, v){ _.writeUInt32LE(v, 4*(Number(i)+1)) })
 }
 
+function TGI(t,g,i){
+	return { Type: t, Group: g, Instance: i }
+}
 
+exports.Index = {}
+
+exports.Index.Load = function(h){
+var i = [], b = this.slice(h.Index.Offset,h.Index.Size)
+	return i
+}
+exports.Index.Save = function(h, i){
+	;
+}
