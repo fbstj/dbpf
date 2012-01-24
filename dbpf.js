@@ -1,70 +1,41 @@
+function V(M, m) { return Number(M + '.' + m) }
+V.M = function(v){ return Number(String(v).split('.')[0] || 0) }
+V.m = function(v){ return Number(String(v).split('.')[1] || 0) }
 
-function DBPF_Header(){
-	this.Version = 1.0
-	this.UserVersion = 0.0
-	this.Flags = 0; this.Ctime = 0; this.Atime = 0
-	this.Index = { Version: 7.0, Count: 0, Offset: 0, Size: 0 }
-	this.Holes = { Count: 0, Offset: 0, Size: 0 }
-}
-
-DBPF_Header.prototype = {
-	serialize: function()
-	{	// serializes this into a 96 byte ArrayBuffer
-		var M = function(v){ return Number(String(v).split('.')[0] || 0) },
-			m = function(v){ return Number(String(v).split('.')[1] || 0) }, 
-			buf = new Buffer(96), i = 0,
-			word = function(v){ buf.writeUInt32BE(v, 4*i++) }
-		buf.write("DBPF", 0, 4*i++, 'ascii')
-		word(M(this.Version)); word(m(this.Version))
-		word(M(this.UserVersion)); word(m(this.UserVersion))
-		word(this.Flags); word(this.Ctime); word(this.Atime)
-		word(M(this.Index.Version))
-		word(this.Index.Count); word(this.Index.Offset); word(this.Index.Size)
-		word(this.Holes.Count); word(this.Holes.Offset); word(this.Holes.Size)
-		word(m(this.Index.Version))
-		word(this.Index.Offset)
-		return buf
-	},
-	deserialize: function(buf)
-	{	// deserializes an ArrayBuffer into this
-		var version = function(M, m) { return Number(M + '.' + m) },
-			word = function(i){ return buf.readUInt32BE(4*i) }
-		if (buf.toString('ascii',0, 4) != "DBPF")
-			throw new TypeError("not a DBPF buffer")
-		this.Version = version(word(1),word(2))
-		this.UserVersion = version(word(3), word(4))
-		this.Flags = word(5); this.Ctime = word(6); this.Atime = word(7)
-		this.Index.Version = version(word(8), word(15))
-		this.Index.Count = word(9)
-		this.Index.Offset = word((word(15) == 3)?16:10)
-		this.Index.Size = word(11)
-		this.Holes.Count = word(12)
-		this.Holes.Offset = word(13)
-		this.Holes.Size = word(14)
-	},
+function map(cb){	// iterates over this, calling cb(key,value)
+	for(var i in this)	cb(i, this[i])
 }
 
-var DBPF = function(fd){
-function F(){
-	this.Header = new DBPF_Header()
-	this.Index = []
+function DBPF_Header(V, uV, F, C, A, iV, iC, iO, iS, hC, hO, hS){
+	this.Version = V || 1.0
+	this.UserVersion = uV || 0.0
+	this.Flags = F||0; this.Ctime = C||0; this.Atime = A||0
+	this.Index = { Version: iV||7.0, Count: iC||0, Offset: iO||0, Size: iS||0 }
+	this.Holes = { Count: hC||0, Offset: hO||0, Size: hS||0 }
 }
-F.prototype = {
-	_file: fd,
-	loadHeader: function() {
-		var fr = new FileReader(),
-			ab = fr.readAsArrayBuffer(this._file)
-		this.Header.deserialize(ab)
-	},
-	saveHeader: function(){
-		var buf = this.Header.serialize()
-	},
-	loadIndex: function(){ },
-	saveIndex: function(){ }
-}
-	return new F()
-}
-DBPF.Header = function(){ return new DBPF_Header(arguments) }
-DBPF.Index = function(){ return new DBPF_Index(arguments) }
+exports.Header = function(){ var o = {}; DBPF_Header.apply(o, arguments); return o }
 
-module.exports = DBPF
+// bind to a buffer
+exports.Header.Load = function(){
+	var _ = this
+	function W(i){ return _.readUInt32BE(i*4) }
+	if (_.toString('ascii',0, 4) != "DBPF")
+		throw new TypeError("not a DBPF buffer")
+
+	return new DBPF_Header( V(W(1), W(2)), V(W(3), W(4)), W(5), W(6), W(7),
+							V(W(8), W(15)), W(9), W((W(15) == 3)?16:10), W(11),
+							W(12), W(13), W(14) );
+}
+exports.Header.Save = function(h){
+	var _ = this
+	this.write("DBPF", 0, 4, 'ascii')
+	map.bind([
+		V.M(h.Version), V.m(h.Version),
+		V.M(h.UserVersion), V.m(h.UserVersion), h.Flags, h.Ctime, h.Atime,
+		V.M(h.Index.Version), h.Index.Count, h.Index.Offset, h.Index.Size,
+		h.Holes.Count, h.Holes.Offset, h.Holes.Size,
+		V.m(h.Index.Version), h.Index.Offset
+	])(function(i, v){ _.writeUInt32BE(v, 4*(Number(i)+1)) })
+}
+
+
