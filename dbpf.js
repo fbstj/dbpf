@@ -1,89 +1,88 @@
+/*
+	DBPF parsing library
+	require('dbpf')(buf) returns a Buffer object
+	that has fields corresponding to different parts of the buffer
+	including an array of Buffers containing the files in the DBPF
+*/
+
+function A(to, name, get, set, props){
+var p = props || {}
+	p['get'] = get; p['set'] = set
+	delete p['value']; delete p['writable'];
+	Object.defineProperty(to, name, p)
+}
+
 function V(M, m) { return Number(M + '.' + m) }
 V.M = function(v){ return Number(String(v).split('.')[0] || 0) }
 V.m = function(v){ return Number(String(v).split('.')[1] || 0) }
-
-function map(cb){	// iterates over this, calling cb(key,value)
-	for(var i in this)	cb(i, this[i])
-}
 
 var word = {
 	R: function(i, o){ return this.readUInt32LE(Number(i)*4+(o||0)) },
 	W: function(i, v, o){ this.writeUInt32LE(v, Number(i)*4+(o||0)) },
 }
 
-function DBPF_Header(V, uV, F, C, A, iV, iC, iO, iS, hC, hO, hS){
-	this.Version = V || 1.0
-	this.UserVersion = uV || 0.0
-	this.Flags = F||0; this.Ctime = C||0; this.Atime = A||0
-	this.Index = { Version: iV||7.0, Count: iC||0, Offset: iO||0, Size: iS||0 }
-	this.Holes = { Count: hC||0, Offset: hO||0, Size: hS||0 }
+function gs_W(on, With, name, i, o){ o = o||0
+	A(on, name,
+		function(){
+			return word.R.call(With, i, o)
+		},
+		function(v){
+			word.W.call(With, i, v, o)
+		})
 }
-exports.Header=function(){var o={};DBPF_Header.apply(o,arguments);return o}
+function gs_V(on, With, name, M, m){
+	A(on, name,
+		function(){
+			return V(word.R.call(With, M), word.R.call(With, m))
+		},
+		function(v){
+			word.W.call(With, M, V.M(v))
+			word.W.call(With, m, V.m(v))
+		})
+}
+function get_Index(){
+var R = word.R.bind(this), W = word.W.bind(this)	// utilities
+var I = Array(R(9))	// the Index object
+	gs_V(I, this, 'Version', 8, 15)
+	gs_W(I, this, 'Count', 9)
+	function _O(){ return (R(15) == 3)?16:10 }
+	A(I, 'Offset', function(){ return R(_O()) }, function(v){ W(_O(), v) })
+	gs_W(I, this, 'Size', 11)
+	return I
+}
 
-// bind to a buffer
-exports.Header.Load = function(){
-var _ = this.slice(0, 96), W = []
-	if (_.toString('ascii',0, 4) != "DBPF")
+function get_File(r){
+var I = this.Index, R = word.R.bind(this), W = word.W.bind(this)
+var F = {}
+function gs(name, i){
+var o = I.Offset + (I.Size/I.Count) * r
+	A(F, name, function(){ return R(i, o) }, function(v){ W(i, v, o) })
+}
+	gs('Type', 0); gs('Group', 1); gs('Instance', 2)
+	gs('Offset', 3); gs('Size', 4)
+	F = this.slice(F.Offset, F.Offset + F.Size)
+	gs('Type', 0); gs('Group', 1); gs('Instance', 2)
+	gs('Offset', 3); gs('Size', 4)	
+//	A(F, 'TGI', function(){ return [this.Type, this.Group, this.Instance] })
+	return F
+}
+
+function DBPF(){
+	A(this, 'MAGIC', function(){ return this.toString('ascii',0, 4) })
+	if(this.MAGIC != "DBPF")	// assert DBPF magic
 		throw new TypeError("not a DBPF buffer")
-	for(var i = 0; i < 17; i++)
-		W.push(word.R.call(_, i))
-	return new DBPF_Header( V(W[1], W[2]), V(W[3], W[4]), W[5], W[6], W[7],
-							V(W[8], W[15]), W[9], W[(W[15] == 3)?16:10], W[11],
-							W[12], W[13], W[14] );
-}
-exports.Header.Save = function(h){
-var _ = this.slice(0, 96)
-	_.fill(0)
-	_.write("DBPF", 0, 4, 'ascii')
-	map.call([
-		V.M(h.Version), V.m(h.Version),
-		V.M(h.UserVersion), V.m(h.UserVersion), h.Flags, h.Ctime, h.Atime,
-		V.M(h.Index.Version), h.Index.Count, h.Index.Offset, h.Index.Size,
-		h.Holes.Count, h.Holes.Offset, h.Holes.Size,
-		V.m(h.Index.Version), h.Index.Offset
-	], function(i, v){ word.W.call(_, Number(i)+1, v) })
+	// load header into this.{Version,UserVersion,Flags,Created,Modified}
+	gs_V(this, this, 'Version', 1, 2)
+	gs_V(this, this, 'UserVersion', 3, 4)
+	gs_W(this, this, 'Flags', 5);
+	gs_W(this, this, 'Created', 6); gs_W(this, this, 'Modified', 7)
+	// load index table into this.Index
+	var I = this.Index = get_Index.call(this)
+	for(var i = 0; i < I.Count; i++)
+		I[i] = get_File.call(this, i)
 }
 
-exports.Index = function(){}
+DBPF.Make = function(){}
 
-function I_meta(h){
-	return { C: h.Index.Count, O: h.Index.Offset, S: h.Index.Size,
-		get W(){ return this.S/this.C/4 },
-	}
-}
-function I_record(){
-	return { 
-		Type: Number(this.shift()) || 0,
-		Group: Number(this.shift()) || 0,
-		Instance: Number(this.shift()) || 0,
+module.exports = function(b){ var _ = new Buffer(b); DBPF.call(_); return _ }
 
-		Size: Number(this.pop()) || 0,
-		Offset: Number(this.pop()) || 0,
-	}
-}
-
-exports.Index.Load = function(h){ var H = I_meta(h)
-var i = [], _ = this.slice(H.O), W = word.R.bind(_)
-	for(var j = 0; j < H.C; j++)
-	{
-		var a = []
-		for(var k = 0; k < H.W; k++)
-			a.push(W(j * H.W + k))
-		i.push(I_record.call(a))
-	}
-	return i
-}
-exports.Index.Save = function(h, i){ var H = I_meta(h)
-var _ = this.slice(H.O), W = word.W.bind(_)
-	map.call(i, function(k, v){
-		var j = Number(k)*H.W
-		console.log((j+5)*4)
-		W(j + 0, v.Type)
-		W(j + 1, v.Group)
-		W(j + 2, v.Instance)
-		W(j + 3, v.Size)
-		W(j + 4, v.Offset)
-	})
-}
-
-exports.File = function(i){ return this.slice(i.Offset, i.Offset+i.Size) }
