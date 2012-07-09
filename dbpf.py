@@ -1,8 +1,11 @@
 import sys
 import json
 from struct import Struct
+import array
 from collections import namedtuple
 from io import BufferedIOBase
+
+DIR = int('E86B1EEF',16)
 
 #types
 class Header(namedtuple('Header',[ 'magic',
@@ -33,13 +36,6 @@ class Header(namedtuple('Header',[ 'magic',
     def holes(self):
         return self.Index(0, self[12], self[13], self[14])
 
-    @property
-    def dir(self):
-        for r in self.records():
-            if r.tgi.type == 0xE86B1EEF:
-                return r
-        return None
-
     def __new__(self, fd):
         if not isinstance(fd, BufferedIOBase):
             raise ArgumentException('File', e)
@@ -51,15 +47,11 @@ class Header(namedtuple('Header',[ 'magic',
             raise DBPFException('Not a DBPF file')
         return h._replace(magic='DBPF')._replace(reserved='')
 
+    @property
     def records(self):
-        count = self.index.count
-        if count < 1:
-            raise DBPFException('No records')
-        rs = [0]*count
-        for i in range(count):
-            rs[i] = self.record(i)
-        return rs
-    
+        for i in range(self.index.count):
+            yield self.record(i)
+
     def record(self, id):
         if self.version_major != 1:
             raise DBPFException('blah')
@@ -69,7 +61,7 @@ class Header(namedtuple('Header',[ 'magic',
         rb = Record.bytes(self.index.version)
         self._fd.seek(i.offset + rb.size * id)
         return Record._make(rb.unpack(self._fd.read(rb.size)))
-        
+
     def file(self, record):
         if not isinstance(record, Record):
             raise ArgumentException('Record', e)
@@ -79,15 +71,27 @@ class Header(namedtuple('Header',[ 'magic',
         self._fd.seek(_f.offset)
         return self._fd.read(_f.size)
 
+    @property
+    def dir(self):
+        _x = [_r for _r in self.records if _r.tgi.type == DIR]
+        if len(_x) != 1:
+            raise Exception('Incorrect directory')
+        _r = _x[0]
+        _f = self.file(_r)
+        _a = array.array('i',_f)
+        _l = 5 if self.index.version == 7.1 else 4
+        for i in range(0, len(_a), _l):
+            yield list(_a[i:i+_l])
+
     def _asdict(self):
         return {
-                'version': self.version, 'user_version': self.user_version,
-                'flags': self.flags, 'ctime': self.ctime, 'mtime': self.mtime,
-                'index': dict(self.index._asdict()),
-                'holes': dict(self.holes._asdict())
-            }
+            'version': self.version, 'user_version': self.user_version,
+            'flags': self.flags, 'ctime': self.ctime, 'mtime': self.mtime,
+            'index': dict(self.index._asdict()),
+            'holes': dict(self.holes._asdict())
+        }
 
-TGI = namedtuple('TGI','type group interface')
+TGI = namedtuple('TGI','type group identity')
 Index = namedtuple('Index','offset size')
 
 class Record(namedtuple('Record','tgi file')):
@@ -125,13 +129,8 @@ class DBPFException(Exception):
         super().__init__(self,'Argument Exception',*args)
 
 if __name__ == '__main__':
-
-    _f = open('../DJEM.dat', 'rb')
+    import sys
+    _f = open(sys.argv[1], 'rb')
     _h = Header(_f)
-    _i = _h.records()
-    _r = _h.record(0)
-    _b = _h.file(_r)
-
-TypesByID = {
-    0xE86B1EEF: 'DIR'
-}
+    for _d in _h.dir:
+        print(_d)
