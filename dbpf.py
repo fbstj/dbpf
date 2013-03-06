@@ -1,136 +1,114 @@
-import sys
-import json
-from struct import Struct
+import struct
 import array
 from collections import namedtuple
-from io import BufferedIOBase
 
 DIR = int('E86B1EEF',16)
 
-#types
-class Header(namedtuple('Header',[ 'magic',
-    'version_major', 'version_minor',
-    'user_version_major', 'user_version_minor',
-    'flags', 'ctime', 'mtime',
-    'index_version_major',
-    'index_count', 'index_offset', 'index_size',
-    'holes_count', 'holes_offset', 'holes_size',
-    'index_version_minor', 'index_offset_v2',
-    'unknown', 'reserved',
-    ])):
-    bytes = Struct("4s17i24s")
-    Index = namedtuple('Header_Index', 'version count offset size')
+def match_parts(parts, a, b):
+	if not isinstance(a, dict) or not isinstance(b, dict):
+		raise Exception('arguments incorrect')
+	for p in parts:
+		if a[p] != b[p]:
+			return False
+	return True
 
-    @property
-    def version(self): return version(self[1], self[2])
+class Header(namedtuple('DBPF_header',[ 'magic',
+			'version_major', 'version_minor',
+			'user_version_major', 'user_version_minor',
+			'flags', 'ctime', 'mtime',
+			'index_version_major',
+			'index_count', 'index_offset', 'index_size',
+			'holes_count', 'holes_offset', 'holes_size',
+			'index_version_minor', 'index_offset_v2',
+			'unknown', 'reserved',
+		])):
+	bytes = struct.Struct("4s17i24s")
 
-    @property
-    def user_version(self): return version(self[3], self[4])
+class Index(namedtuple("DBPF_Index", 'version count offset size')):
+	pass
 
-    @property
-    def index(self):
-        iv = self[8] if self[1] == 1 else self[15]
-        return self.Index(iv, self[9], self[10], self[11])
+class DBPF:
+	@property
+	def version(self): return version(self.header[1], self.header[2])
 
-    @property
-    def holes(self):
-        return self.Index(0, self[12], self[13], self[14])
+	@property
+	def user_version(self): return version(self.header[3], self.header[4])
 
-    def __new__(self, fd):
-        if not isinstance(fd, BufferedIOBase):
-            raise ArgumentException('File', e)
-        self._fd = fd;
-        fd.seek(0)
-        _h = Header.bytes
-        h = Header._make(_h.unpack(fd.read(_h.size)))
-        if h.magic != b'DBPF':
-            raise DBPFException('Not a DBPF file')
-        return h._replace(magic='DBPF')._replace(reserved='')
+	@property
+	def index(self):
+		iv = self.header[8] if self.header[1] == 1 else self.header[15]
+		return Index(iv, self.header[9], self.header[10], self.header[11])
 
-    @property
-    def records(self):
-        for i in range(self.index.count):
-            yield self.record(i)
+	@property
+	def holes(self):
+		return Index(0, self.header[12], self.header[13], self.header[14])
 
-    def record(self, id):
-        if self.version_major != 1:
-            raise DBPFException('blah')
-        i = self.index
-        if i.count < id + 1:
-            raise DBPFException('Not enough records')
-        rb = Record.bytes(self.index.version)
-        self._fd.seek(i.offset + rb.size * id)
-        return Record._make(rb.unpack(self._fd.read(rb.size)))
+	def __init__(self, fd):
+		if isinstance(fd, str):
+			fd = open(fd, 'rb')
+		if not isinstance(fd, file):
+			raise ArgumentException('File')
+		self._fd = fd;
+		fd.seek(0)
+		_h = Header.bytes
+		h = self.header = Header._make(_h.unpack(fd.read(_h.size)))
+		if h.magic != b'DBPF':
+			raise DBPFException('Not a DBPF file')
+		self.records = self._scan_records()
 
-    def file(self, record):
-        if not isinstance(record, Record):
-            raise ArgumentException('Record', e)
-        _f = record.file
-        if not isinstance(_f, Index):
-            raise ArgumentException('Index', e)
-        self._fd.seek(_f.offset)
-        return self._fd.read(_f.size)
+	def _record_bytes(self):
+		return struct.Struct({7.0:'5I', 7.1:'6I'}.get(self.index.version, ''))
 
-    @property
-    def dir(self):
-        _x = [_r for _r in self.records if _r.tgi.type == DIR]
-        if len(_x) != 1:
-            raise Exception('Incorrect directory')
-        _r = _x[0]
-        _f = self.file(_r)
-        _a = array.array('i',_f)
-        _l = 5 if self.index.version == 7.1 else 4
-        for i in range(0, len(_a), _l):
-            yield list(_a[i:i+_l])
+	def _scan_records(self):
+		files = []
+		ind = self.index
+		# read index
+		for id in range(ind.count):
+			rb = self._record_bytes()
+			self._fd.seek(ind.offset + rb.size * id)
+			x = rb.unpack(self._fd.read(rb.size))
+			y = dict(
+				type = x[0], group = x[1], instance = x[2],
+				offset = x[-2],
+			)
+			self._fd.seek(y['offset'])
+			y['raw'] = self._fd.read(x[-1])
+			files.append(y)
+		# read dir
+		directory = []
+		for r in files:
+			if not r['type'] == DIR:
+				continue
+			_dir = array.array('i', r['raw'])
+			l = 5 if ind.version == 7.1 else 4
+			for i in range(0, len(_dir), l):
+				_r = list(_dir[i : i + l])
+				directory.append(dict( type = _r[0], group = _r[1], instance = _r[2], size = _r[-1]))
+			break # only take 1 dir file
+		for f in files:
+			for d in directory:
+				if match_parts(['type','group','instance'], f, d):
+					f['size'] = d['size']
+		return files
 
-    def _asdict(self):
-        return {
-            'version': self.version, 'user_version': self.user_version,
-            'flags': self.flags, 'ctime': self.ctime, 'mtime': self.mtime,
-            'index': dict(self.index._asdict()),
-            'holes': dict(self.holes._asdict())
-        }
-
-TGI = namedtuple('TGI','type group identity')
-Index = namedtuple('Index','offset size')
-
-class Record(namedtuple('Record','tgi file')):
-    @classmethod
-    def _make(cls, iterable):
-        return Record(TGI._make(iterable[:3]), Index._make(iterable[-2:]))
-
-    @staticmethod
-    def bytes(version):
-        return Struct({7.0:'5I', 7.1:'6I'}.get(version, ''))
-
-    def decode(self, blob):
-        #parses a binary blob into an object (depending on the TGI)
-        pass
-
-    def encode(self, obj):
-        #reverses decode on an object (depending on the TGI)
-        pass
-
-    def _asdict(self):
-        v = dict(self.tgi._asdict())
-        v.update(self.file._asdict())
-        return v
+	def search(self, **kwargs):
+		for f in self.records:
+			if match_parts(kwargs.keys(), kwargs, f):
+				yield f
 
 #util
 def version(major, minor): return float('.'.join([str(major),str(minor)]))
 
 #exceptions
 class ArgumentException(Exception):
-    def __init__(self, *args):
-        super().__init__(self,'Argument Exception',*args)
+	pass
 
 class DBPFException(Exception):
-    def __init__(self, *args):
-        super().__init__(self,'Argument Exception',*args)
+	pass
 
 if __name__ == '__main__':
-    import sys
-    _f = open(sys.argv[1], 'rb')
-    _h = Header(_f)
-    for _d in _h.dir:
-        print(_d)
+	import sys
+	db = DBPF(sys.argv[1])
+	def p(*args): print("{:X}:{:X}:{:X}".format(args[0],args[1],args[2]))
+	for f in db.search(type=DIR):
+		print f['type'], f['group'], f['instance']
