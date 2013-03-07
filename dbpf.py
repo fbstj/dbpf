@@ -2,60 +2,8 @@ import struct
 import array
 from collections import namedtuple
 
-class TGI:
-	@staticmethod
-	def ID(value):
-		"""parses valid IDs into integers"""
-		if value is None:
-			return None
-		if isinstance(value, long):
-			return value
-		if isinstance(value, str):
-			return int(value, 16)
-		return None
-
-	def __init__(self, tid=None, gid=None, iid=None):
-		self.type = self.ID(tid)
-		self.group = self.ID(gid)
-		self.instance = self.ID(iid)
-
-	@staticmethod
-	def __fmt(value=None):
-		return "?" if value is None else "{:X}".format(value)
-
-	def __repr__(self):
-		return "T{:s}:G{:s}:I{:s}".format(
-					self.__fmt(self.type),
-					self.__fmt(self.group),
-					self.__fmt(self.instance)
-				)
-
-class Record:
-	def __init__(self, tid, gid, iid, offset, raw, size=None):
-		self.type = tid
-		self.group = gid
-		self.instance = iid
-		self.offset = offset
-		self.raw = raw
-		self.size = size
-
-	def __cmp__(self, to):
-		if not isinstance(to, TGI):
-			return 1;
-		if to.type is not None:
-			if self.type != to.type:
-				return 2
-		if to.group is not None:
-			if self.group != to.group:
-				return 3
-		if to.instance is not None:
-			if self.instance != to.instance:
-				return 4
-		return 0
-	def __repr__(self):
-		return "T{:X}:G{:X}:I{:X}".format(self.type,self.group,self.instance)
-
 class Index(namedtuple("DBPF_Index", 'version count offset size')): pass
+class Record(namedtuple("DBPF_Record", 'type group instance offset length size raw')): pass
 
 class DBPF:
 	@property
@@ -90,9 +38,9 @@ class DBPF:
 		self.header = hb.unpack(fd.read(hb.size))
 		if self.header[0] != b'DBPF':
 			raise DBPFException('Not a DBPF file')
-		self.records = []
 		self._scan_records()
 		self._scan_dir()
+		self._push_raw()
 
 	@property
 	def _index_width(self):
@@ -103,10 +51,7 @@ class DBPF:
 		"""parse the records table into self.records"""
 		ind = self.index
 		for rec in self._table(ind.offset, ind.size, self._index_width):
-			self.records.append(Record(
-				tid = rec[0], gid = rec[1], iid = rec[2],
-				offset = rec[-2], raw = rec[-1]
-			))
+			sql.add_index(rec[0], rec[1], rec[2], rec[-2], rec[-1])
 
 	@property
 	def _dir_width(self):
@@ -115,44 +60,41 @@ class DBPF:
 
 	def _scan_dir(self):
 		"""parse the directory table, appending size variables to appropriate record"""
-		dirs = self.search(DIR)
+		dirs = sql.search(DIR)
 		if len(dirs) == 0:
 			return
 		if len(dirs) != 1:
 			raise DBPFException('multiple directory files')
-		d = dirs[0]
-		for rec in self._table(d.offset, d.raw, self._dir_width):
-			res = self.search(tid = rec[0], gid = rec[1], iid = rec[2])
-			res[0].size = rec[-1]
+		d = Record(*dirs[0])
+		for rec in self._table(d.offset, d.length, self._dir_width):
+			res = sql.search(rec[0], rec[1], rec[2])
+			sql.add_size(rec[0],rec[1],rec[2],rec[-1])
+
+	def _push_raw(self):
+		for rec in self.records:
+			self._fd.seek(rec.offset)
+			sql.add_raw(rec[0],rec[1],rec[2], self._fd.read(rec.length))
 
 	def _table(self, offset, length, width):
 		"""parse the passed """
 		self._fd.seek(offset)
 		raw = array.array('L',self._fd.read(length));
 		for i in range(0, len(raw), width):
-			if i % 1000 == 0: print i
 			yield list(raw[i : i + width])
 
-	def read(self, tgi=None, **kwargs):
-		"""read the passed file"""
-		if tgi is None:
-			tgi = TGI(**kwargs)
-		if isinstance(tgi, Record):
-			tgi = TGI(tid=tgi.type, gid=tgi.group, iid=tgi.instance)
-		for rec in self.search(tgi):
-			self._fd.seek(rec.offset)
-			yield self._fd.read(rec.raw)
+	@property
+	def records(self):
+		sql.c.execute("SELECT * FROM files")
+		return [Record(*rec) for rec in sql.c.fetchall()]
 
-	def search(self, tgi=None, **kwargs):
-		"""search through records for the passed TGI"""
-		if tgi is None: tgi = TGI(**kwargs)
-		return [f for f in self.records if f.__cmp__(tgi) == 0]
+	def search(self, tid=None, gid=None, iid=None):
+		return [Record(*rec) for rec in sql.search(tid,gid,iid)]
 
-DIR = TGI(tid='E86B1EEF')
-EFFDIR = TGI(tid='EA5118B0')
+DIR = 'E86B1EEF'
+EFFDIR = 'EA5118B0'
 
 def RUL(iid=None):
-	return TGI('A5BCF4B', 'AA5BCF57', iid)
+	return ('A5BCF4B', 'AA5BCF57', iid)
 
 #util
 def version(major, minor): return float('.'.join([str(major),str(minor)]))
@@ -162,7 +104,8 @@ class ArgumentException(Exception): pass
 class DBPFException(Exception): pass
 
 if __name__ == '__main__':
+	import sql
 	import sys
 	db = DBPF(sys.argv[1])
-	for i in db.records:
-		print i
+	for r in db.search(3899334383L):
+		print r
