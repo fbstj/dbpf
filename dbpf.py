@@ -2,13 +2,23 @@ import struct
 import array
 from collections import namedtuple
 
-DIR = int('E86B1EEF',16)
-
 class TGI:
+	@staticmethod
+	def ID(value):
+		"""parses valid IDs into integers"""
+		if value is None:
+			return None
+		if isinstance(value, long):
+			return value
+		if isinstance(value, str):
+			return int(value, 16)
+		return None
+
 	def __init__(self, tid=None, gid=None, iid=None):
-		self.type = tid
-		self.group = gid
-		self.instance = iid
+		self.type = self.ID(tid)
+		self.group = self.ID(gid)
+		self.instance = self.ID(iid)
+
 	@staticmethod
 	def __fmt(value=None):
 		return "?" if value is None else "{:X}".format(value)
@@ -20,7 +30,6 @@ class TGI:
 					self.__fmt(self.instance)
 				)
 
-class Index(namedtuple("DBPF_Index", 'version count offset size')): pass
 class Record:
 	def __init__(self, tid, gid, iid, offset, raw, size=None):
 		self.type = tid
@@ -45,6 +54,8 @@ class Record:
 		return 0
 	def __repr__(self):
 		return "T{:X}:G{:X}:I{:X}".format(self.type,self.group,self.instance)
+
+class Index(namedtuple("DBPF_Index", 'version count offset size')): pass
 
 class DBPF:
 	@property
@@ -104,7 +115,7 @@ class DBPF:
 
 	def _scan_dir(self):
 		"""parse the directory table, appending size variables to appropriate record"""
-		dirs = self.search(tid = DIR)
+		dirs = self.search(DIR)
 		if len(dirs) == 0:
 			return
 		if len(dirs) != 1:
@@ -119,11 +130,15 @@ class DBPF:
 		self._fd.seek(offset)
 		raw = array.array('L',self._fd.read(length));
 		for i in range(0, len(raw), width):
+			if i % 1000 == 0: print i
 			yield list(raw[i : i + width])
 
-	def _read(self, tgi=None, **kwargs):
+	def read(self, tgi=None, **kwargs):
 		"""read the passed file"""
-		if tgi is None: tgi = TGI(**kwargs)
+		if tgi is None:
+			tgi = TGI(**kwargs)
+		if isinstance(tgi, Record):
+			tgi = TGI(tid=tgi.type, gid=tgi.group, iid=tgi.instance)
 		for rec in self.search(tgi):
 			self._fd.seek(rec.offset)
 			yield self._fd.read(rec.raw)
@@ -132,6 +147,12 @@ class DBPF:
 		"""search through records for the passed TGI"""
 		if tgi is None: tgi = TGI(**kwargs)
 		return [f for f in self.records if f.__cmp__(tgi) == 0]
+
+DIR = TGI(tid='E86B1EEF')
+EFFDIR = TGI(tid='EA5118B0')
+
+def RUL(iid=None):
+	return TGI('A5BCF4B', 'AA5BCF57', iid)
 
 #util
 def version(major, minor): return float('.'.join([str(major),str(minor)]))
@@ -143,5 +164,5 @@ class DBPFException(Exception): pass
 if __name__ == '__main__':
 	import sys
 	db = DBPF(sys.argv[1])
-	def p(*args): print("{:X}:{:X}:{:X}".format(args[0],args[1],args[2]))
-	print db.version, db.user_version, db.index
+	for i in db.records:
+		print i
