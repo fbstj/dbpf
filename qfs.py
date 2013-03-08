@@ -1,3 +1,0 @@
-
-
-def QFS_decode(
