@@ -41,6 +41,21 @@ class DBPF:
 		return version(self.header[3], self.header[4])
 
 	@property
+	def flags(self):
+		"""flags"""
+		return self.header[5]
+
+	@property
+	def ctime(self):
+		"""creation time"""
+		return self.header[6]
+
+	@property
+	def mtime(self):
+		"""modification time"""
+		return self.header[7]
+
+	@property
 	def index(self):
 		"""the table of files in this DBPF"""
 		iv = self.header[8] if self.header[1] == 1 else self.header[15]
@@ -153,3 +168,4 @@ if __name__ == '__main__':
 	db = DBPF(sys.argv[1])
 	for r in db.records:
 		print "T{:08x}G{:08x}I{:08x}".format(*r[:3]), len(r[3])
+	db.save(None)
