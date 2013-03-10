@@ -71,7 +71,6 @@ class DBPF:
 		self._db = sqlite3.connect(db).cursor()
 		self._sql("""CREATE TABLE IF NOT EXISTS
 			files ( tid, gid, iid, raw, PRIMARY KEY(tid, gid, iid) )""")
-
 		self.__loaded = False
 
 	def load(self):
@@ -123,13 +122,19 @@ class DBPF:
 	@property
 	def records(self):
 		self.load()
-		return self._sql("SELECT * FROM files")
+		return [
+			[r[0],r[1],r[2],base64.decodestring(r[3])]
+			for r in self._sql("SELECT tid, gid, iid, raw FROM files")
+		]
 
 	def search(self, tid=None, gid=None, iid=None):
 		self.load()
 		where = TGI(tid,gid,iid)
-		query = "SELECT * FROM files WHERE " + where[0]
-		return self._sql(query, where[1])
+		query = "SELECT tid, gid, iid, raw FROM files WHERE " + where[0]
+		return [
+			[r[0],r[1],r[2],base64.decodestring(r[3])]
+			for r in self._sql(query, where[1])
+		]
 
 DIR = 'E86B1EEF'
 EFFDIR = 'EA5118B0'
