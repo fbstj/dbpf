@@ -20,6 +20,7 @@ def ID(value):
 
 
 def TGI(tid=None, gid=None, iid=None):
+	"""produce an sql query with optional parameters"""
 	where = []
 	if tid is not None:
 		where.append(("tid=?" , ID(tid)))
@@ -30,6 +31,7 @@ def TGI(tid=None, gid=None, iid=None):
 	return " and ".join([a for a,b in where]), [b for a,b in where]
 
 class DBPF:
+	"""a database backed DBPF file"""
 	@property
 	def version(self):
 		"""a real number representing the header version"""
@@ -67,6 +69,7 @@ class DBPF:
 		return Index(0, self.header[12], self.header[13], self.header[14])
 	
 	def _sql(self, query, args=[]):
+		"""query the database, return all results"""
 		self._db.execute(query, args)
 		return self._db.fetchall()
 
@@ -88,6 +91,7 @@ class DBPF:
 		self.__loaded = False
 
 	def load(self):
+		"""lazy loading"""
 		if self.__loaded:
 			return
 		self._scan_records()
@@ -135,6 +139,7 @@ class DBPF:
 
 	@property
 	def records(self):
+		"""retrieve all files"""
 		self.load()
 		return [
 			[r[0],r[1],r[2],base64.decodestring(r[3])]
@@ -142,6 +147,7 @@ class DBPF:
 		]
 
 	def search(self, tid=None, gid=None, iid=None):
+		"""search for a particular subset of files"""
 		self.load()
 		where = TGI(tid,gid,iid)
 		query = "SELECT tid, gid, iid, raw FROM files WHERE " + where[0]
@@ -151,6 +157,7 @@ class DBPF:
 		]
 
 	def save(self, fd):
+		"""save files to the passed fd"""
 		# prepare
 		head = list(self.header)
 		ind = []
@@ -183,6 +190,7 @@ DIR = 'E86B1EEF'
 EFFDIR = 'EA5118B0'
 
 def RUL(iid=None):
+	"""return the TGI for the RUL with passed instance ID"""
 	return ('A5BCF4B', 'AA5BCF57', iid)
 
 #util
