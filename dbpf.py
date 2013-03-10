@@ -4,6 +4,7 @@ from collections import namedtuple
 import sqlite3
 import base64
 
+Header = struct.Struct("4s17i24s")
 class Index(namedtuple("DBPF_Index", 'version count offset size')): pass
 class Record(namedtuple("DBPF_Record", 'type group instance offset length size raw')): pass
 
@@ -29,8 +30,6 @@ def TGI(tid=None, gid=None, iid=None):
 	return " and ".join([a for a,b in where]), [b for a,b in where]
 
 class DBPF:
-	Header = struct.Struct("4s17i24s")
-
 	@property
 	def version(self):
 		"""a real number representing the header version"""
@@ -64,7 +63,7 @@ class DBPF:
 		self._fd = fd;
 
 		fd.seek(0)
-		self.header = self.Header.unpack(fd.read(self.Header.size))
+		self.header = Header.unpack(fd.read(Header.size))
 		if self.header[0] != b'DBPF':
 			raise DBPFException('Not a DBPF file')
 
