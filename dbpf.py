@@ -106,12 +106,8 @@ class DBPF:
 		"""parse the records table into self.records"""
 		ind = self.index
 		for rec in self._table(ind.offset, ind.size, self._index_width):
-			tgi = TGI(*rec[:3])
-			self._sql("INSERT INTO files(tid, gid, iid) VALUES (?, ? , ?)", tgi[1])
 			self._fd.seek(rec[-2])
-			raw = self._fd.read(rec[-1])
-			args = [base64.encodestring(raw)] + tgi[1]
-			self._sql("UPDATE files SET raw=? WHERE tid=? and gid=? and iid=?", args)
+			self[rec] = self._fd.read(rec[-1]);
 
 	@property
 	def _dir_width(self):
@@ -139,22 +135,16 @@ class DBPF:
 
 	@property
 	def records(self):
-		"""retrieve all files"""
+		"""retrieve all TGIs"""
 		self.load()
-		return [
-			[r[0],r[1],r[2],base64.decodestring(r[3])]
-			for r in self._sql("SELECT tid, gid, iid, raw FROM files")
-		]
+		return self._sql("SELECT tid, gid, iid FROM files")
 
 	def search(self, tid=None, gid=None, iid=None):
-		"""search for a particular subset of files"""
+		"""search for a particular subset of TGIs"""
 		self.load()
 		where = TGI(tid,gid,iid)
-		query = "SELECT tid, gid, iid, raw FROM files WHERE " + where[0]
-		return [
-			[r[0],r[1],r[2],base64.decodestring(r[3])]
-			for r in self._sql(query, where[1])
-		]
+		query = "SELECT tid, gid, iid FROM files WHERE " + where[0]
+		return self._sql(query, where[1])
 
 	def save(self, fd):
 		"""save files to the passed fd"""
@@ -163,12 +153,13 @@ class DBPF:
 		ind = []
 		o = Header.size
 		for r in self.records:
+			f = self[r[0],r[1],r[2]]
 			ind.append(dict(
 				tid = r[0], gid = r[1], iid = r[2],
-				offset = o, length = len(r[3]),
-				raw = r[3]
+				offset = o, length = len(f),
+				raw = f
 			))
-			o += len(r[3])
+			o += len(f)
 		# <index<count:4><offset:4><size:4>:12>
 		head[9] = len(ind)
 		head[10] = o
@@ -185,6 +176,24 @@ class DBPF:
 		for r in ind:
 			rec = [r['tid'], r['gid'], r['iid'], r['offset'], r['length']]
 			fd.write(struct.pack("5L", *rec))
+
+	def __setitem__(self, tgi, raw):
+		raw = base64.encodestring(raw)
+		args = list(tgi[:3])
+		if self[tgi[0], tgi[1], tgi[2]] == None:
+			query = "INSERT INTO files(tid, gid, iid, raw) VALUES (?, ? , ?, ?)"
+			args.append(raw)
+		else:
+			query = "UPDATE files SET raw=? WHERE tid=? AND gid=? AND iid=?"
+			args.prepend(raw)
+		self._sql(query, args)
+
+	def __getitem__(self, tgi):
+		query = "SELECT raw FROM files WHERE tid=? AND gid=? AND iid=?"
+		result = self._sql(query,tgi)
+		if len(result) < 1:
+			return None
+		return base64.decodestring(result[0][0])
 
 DIR = 'E86B1EEF'
 EFFDIR = 'EA5118B0'
@@ -204,9 +213,11 @@ if __name__ == '__main__':
 	import sys
 	db = DBPF(sys.argv[1])
 	for r in db.records:
-		print "T{:08x}G{:08x}I{:08x}".format(*r[:3]), len(r[3])
+		f = db[r]
+		print "T{:08x}G{:08x}I{:08x}".format(*r), len(f)
 	db.save(open("test.dat","wb"))
 	print "load saved file"
 	db = DBPF("test.dat")
 	for r in db.records:
-		print "T{:08x}G{:08x}I{:08x}".format(*r[:3]), len(r[3])
+		f = db[r]
+		print "T{:08x}G{:08x}I{:08x}".format(*r), len(f)
