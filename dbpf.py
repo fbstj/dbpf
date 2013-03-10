@@ -4,7 +4,7 @@ from collections import namedtuple
 import sqlite3
 import base64
 
-Header = struct.Struct("4s17i24s")
+Header = struct.Struct("4s17L24s")
 class Index(namedtuple("DBPF_Index", 'version count offset size')): pass
 class Record(namedtuple("DBPF_Record", 'type group instance offset length size raw')): pass
 
@@ -150,6 +150,35 @@ class DBPF:
 			for r in self._sql(query, where[1])
 		]
 
+	def save(self, fd):
+		# prepare
+		head = list(self.header)
+		ind = []
+		o = Header.size
+		for r in self.records:
+			ind.append(dict(
+				tid = r[0], gid = r[1], iid = r[2],
+				offset = o, length = len(r[3]),
+				raw = r[3]
+			))
+			o += len(r[3])
+		# <index<count:4><offset:4><size:4>:12>
+		head[9] = len(ind)
+		head[10] = o
+		head[11] = len(ind) * self._index_width * 4
+		# zero hole table
+		head[12] = head[13] = head[14] = 0
+		# save header
+		fd.seek(0)
+		fd.write(Header.pack(*head))
+		# save files
+		for r in ind:
+			fd.write(r['raw'])
+		# save index
+		for r in ind:
+			rec = [r['tid'], r['gid'], r['iid'], r['offset'], r['length']]
+			fd.write(struct.pack("5L", *rec))
+
 DIR = 'E86B1EEF'
 EFFDIR = 'EA5118B0'
 
@@ -168,4 +197,8 @@ if __name__ == '__main__':
 	db = DBPF(sys.argv[1])
 	for r in db.records:
 		print "T{:08x}G{:08x}I{:08x}".format(*r[:3]), len(r[3])
-	db.save(None)
+	db.save(open("test.dat","wb"))
+	print "load saved file"
+	db = DBPF("test.dat")
+	for r in db.records:
+		print "T{:08x}G{:08x}I{:08x}".format(*r[:3]), len(r[3])
