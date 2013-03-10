@@ -29,6 +29,8 @@ def TGI(tid=None, gid=None, iid=None):
 	return " and ".join([a for a,b in where]), [b for a,b in where]
 
 class DBPF:
+	Header = struct.Struct("4s17i24s")
+
 	@property
 	def version(self):
 		"""a real number representing the header version"""
@@ -62,8 +64,7 @@ class DBPF:
 		self._fd = fd;
 
 		fd.seek(0)
-		hb = struct.Struct("4s17i24s")
-		self.header = hb.unpack(fd.read(hb.size))
+		self.header = self.Header.unpack(fd.read(self.Header.size))
 		if self.header[0] != b'DBPF':
 			raise DBPFException('Not a DBPF file')
 
@@ -71,7 +72,13 @@ class DBPF:
 		self._sql("""CREATE TABLE IF NOT EXISTS
 			files ( tid, gid, iid, raw, PRIMARY KEY(tid, gid, iid) )""")
 
+		self.__loaded = False
+
+	def load(self):
+		if self.__loaded:
+			return
 		self._scan_records()
+		self.__loaded = True
 
 	@property
 	def _index_width(self):
@@ -115,9 +122,11 @@ class DBPF:
 
 	@property
 	def records(self):
+		self.load()
 		return self._sql("SELECT * FROM files")
 
 	def search(self, tid=None, gid=None, iid=None):
+		self.load()
 		where = TGI(tid,gid,iid)
 		query = "SELECT * FROM files WHERE " + where[0]
 		return self._sql(query, where[1])
