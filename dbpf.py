@@ -133,11 +133,11 @@ class DBPF:
 		for i in range(0, len(raw), width):
 			yield list(raw[i : i + width])
 
-	@property
-	def records(self):
+	def __iter__(self):
 		"""retrieve all TGIs"""
 		self.load()
-		return self._sql("SELECT tid, gid, iid FROM files")
+		for r in self._sql("SELECT tid, gid, iid FROM files"):
+			yield r
 
 	def search(self, tid=None, gid=None, iid=None):
 		"""search for a particular subset of TGIs"""
@@ -152,8 +152,8 @@ class DBPF:
 		head = list(self.header)
 		ind = []
 		o = Header.size
-		for r in self.records:
-			f = self[r[0],r[1],r[2]]
+		for r in self:
+			f = self[r]
 			ind.append(dict(
 				tid = r[0], gid = r[1], iid = r[2],
 				offset = o, length = len(f),
@@ -180,7 +180,7 @@ class DBPF:
 	def __setitem__(self, tgi, raw):
 		raw = base64.encodestring(raw)
 		args = list(tgi[:3])
-		if self[tgi[0], tgi[1], tgi[2]] == None:
+		if self[args] == None:
 			query = "INSERT INTO files(tid, gid, iid, raw) VALUES (?, ? , ?, ?)"
 			args.append(raw)
 		else:
@@ -194,6 +194,9 @@ class DBPF:
 		if len(result) < 1:
 			return None
 		return base64.decodestring(result[0][0])
+
+	def __contains__(self, tgi):
+		return self.search(*tgi) > 0
 
 DIR = 'E86B1EEF'
 EFFDIR = 'EA5118B0'
@@ -212,12 +215,12 @@ class DBPFException(Exception): pass
 if __name__ == '__main__':
 	import sys
 	db = DBPF(sys.argv[1])
-	for r in db.records:
+	for r in db:
 		f = db[r]
 		print "T{:08x}G{:08x}I{:08x}".format(*r), len(f)
 	db.save(open("test.dat","wb"))
 	print "load saved file"
 	db = DBPF("test.dat")
-	for r in db.records:
+	for r in db:
 		f = db[r]
 		print "T{:08x}G{:08x}I{:08x}".format(*r), len(f)
