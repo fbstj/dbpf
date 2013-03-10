@@ -18,7 +18,7 @@ def parse(line=""):
 
 def parser(fname):
 	lines = open(sys.argv[2])
-	for l in lines.readlines():
+	for l in lines:
 		tgi = parse(l)
 		if tgi is None:
 			continue
