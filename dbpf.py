@@ -11,7 +11,7 @@ def ID(value):
 	"""parses valid IDs into integers"""
 	if value is None:
 		return None
-	if isinstance(value, long):
+	if isinstance(value, long) or isinstance(value, int):
 		return value
 	if isinstance(value, str):
 		return int(value, 16)
@@ -89,8 +89,6 @@ class DBPF:
 			args = [base64.encodestring(raw)] + tgi[1]
 			self._sql("UPDATE files SET raw=? WHERE tid=? and gid=? and iid=?", args)
 
-		print "index records scanned"
-
 	@property
 	def _dir_width(self):
 		"""the width of records in the directory table"""
@@ -107,7 +105,6 @@ class DBPF:
 		for rec in self._table(d.offset, d.length, self._dir_width):
 			res = sql.search(rec[0], rec[1], rec[2])
 			sql.add_size(rec[0],rec[1],rec[2],rec[-1])
-		print "directory records scanned"
 
 	def _table(self, offset, length, width):
 		"""parse the passed """
@@ -141,5 +138,5 @@ class DBPFException(Exception): pass
 if __name__ == '__main__':
 	import sys
 	db = DBPF(sys.argv[1])
-	for r in db.search(tid=0xA5BCF4B):
-		print r[:3]
+	for r in db.records:
+		print "T{:08x}G{:08x}I{:08x}".format(*r[:3]), len(r[3])
