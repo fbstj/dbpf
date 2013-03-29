@@ -1,10 +1,6 @@
 import struct
 import array
 from collections import namedtuple
-import sqlite3
-import base64
-
-from tgi import TGI
 
 Header = struct.Struct("4s17L24s")
 class Index(namedtuple("DBPF_Index", 'version count offset size')): pass
@@ -47,13 +43,8 @@ class DBPF:
 	def holes(self):
 		"""the table of holes in this DBPF"""
 		return Index(0, self.header[12], self.header[13], self.header[14])
-	
-	def _sql(self, query, args=[]):
-		"""query the database, return all results"""
-		self._db.execute(query, list(args))
-		return self._db.fetchall()
 
-	def __init__(self, fd, db=':memory:'):
+	def __init__(self, fd):
 		if isinstance(fd, str):
 			fd = open(fd, 'rb')
 		if not isinstance(fd, file):
@@ -65,53 +56,17 @@ class DBPF:
 		if self.header[0] != b'DBPF':
 			raise DBPFException('Not a DBPF file')
 
-		self._db = sqlite3.connect(db).cursor()
-		self._sql("""CREATE TABLE IF NOT EXISTS
-			files ( tid, gid, iid, raw, PRIMARY KEY(tid, gid, iid) )""")
-		self.__loaded = False
-
-	def load(self):
-		"""lazy loading"""
-		if self.__loaded:
-			return
-		self._scan_records()
-		self.__loaded = True
-
 	@property
 	def _index_width(self):
 		"""the width of records in the index table"""
 		return {7.0:5, 7.1:6}.get(self.index.version, '')
-
-	def _scan_records(self):
-		"""parse the records table into self.records"""
-		ind = self.index
-		for rec in self._table(ind.offset, ind.size, self._index_width):
-			self._fd.seek(rec[-2])
-			self[rec[:3]] = self._fd.read(rec[-1]);
-
-	@property
-	def _dir_width(self):
-		"""the width of records in the directory table"""
-		return {7.0:4, 7.1:5}.get(self.index.version, '')
-
-	def _scan_dir(self):
-		"""parse the directory table, appending size variables to appropriate record"""
-		dirs = self.search(DIR)
-		if len(dirs) == 0:
-			return
-		if len(dirs) != 1:
-			raise DBPFException('multiple directory files')
-		d = Record(*dirs[0])
-		for rec in self._table(d.offset, d.length, self._dir_width):
-			res = sql.search(rec[0], rec[1], rec[2])
-			sql.add_size(rec[0],rec[1],rec[2],rec[-1])
 
 	def _table(self, offset, length, width):
 		"""parse the passed """
 		self._fd.seek(offset)
 		raw = array.array('L',self._fd.read(length));
 		for i in range(0, len(raw), width):
-			yield list(raw[i : i + width])
+			yield raw[i : i + width]
 
 	def save(self, fd):
 		"""save files to the passed fd"""
@@ -119,8 +74,8 @@ class DBPF:
 		head = list(self.header)
 		ind = []
 		o = Header.size
-		for tgi in self:
-			f = self[tgi]
+		for tgi in self.records:
+			f = self.record(*tgi)
 			d = dict( key = tgi, offset = o, length = len(f), raw = f )
 			ind.append(d)
 			o += len(f)
@@ -141,53 +96,21 @@ class DBPF:
 			rec = list(r['key']) + [r['offset'], r['length']]
 			fd.write(struct.pack("5L", *rec))
 
-	def __iter__(self):
+	@property
+	def records(self):
 		"""retrieve all TGIs"""
-		for r in self._sql("SELECT tid, gid, iid FROM files"):
-			yield TGI(*r)
+		ind = self.index
+		for rec in self._table(ind.offset, ind.size, self._index_width):
+			yield rec[:3]
 
-	def search(self, key):
-		"""search for a particular subset of TGIs"""
-		if not isinstance(key, TGI):
-			key = TGI(*key)
-		query = "SELECT tid, gid, iid FROM files WHERE " + key.query
-		return [TGI(*r) for r in self._sql(query, key)]
-
-	def __setitem__(self, key, raw):
-		"""set raw file object"""
-		if not isinstance(key, TGI):
-			key = TGI(*key[:3])
-		raw = base64.encodestring(raw)
-		args = list(key)
-		if self[key] is None:
-			query = "INSERT INTO files(tid, gid, iid, raw) VALUES (?, ? , ?, ?)"
-			args.append(raw)
-		else:
-			query = "UPDATE files SET raw=? WHERE " + key.query
-			args.prepend(raw)
-		self._sql(query, args)
-
-	def __getitem__(self, key):
-		"""retreive raw file object"""
-		if not isinstance(key, TGI):
-			key = TGI(*key[:3])
-		query = "SELECT raw FROM files WHERE " + key.query
-		result = self._sql(query, key)
-		if len(result) < 1:
-			return None
-		return base64.decodestring(result[0][0])
-
-	def __contains__(self, key):
-		if not isinstance(key, TGI):
-			key = TGI(*key[:3])
-		return self.search(key) > 0
-
-DIR = TGI(0xE86B1EEF)
-EFFDIR = TGI(0xEA5118B0)
-
-def RUL(iid=None):
-	"""return the TGI for the RUL with passed instance ID"""
-	return TGI(0xA5BCF4B, 0xAA5BCF57, iid)
+	def record(self, T, G, I):
+		"""retrieve the (first) file called TGI"""
+		ind = self.index
+		for rec in self._table(ind.offset, ind.size, self._index_width):
+			if rec[0] != T or rec[1] != G or rec[2] != I:
+				continue
+			self._fd.seek(rec[-2])
+			return self._fd.read(rec[-1])
 
 #util
 def version(major, minor): return float('.'.join([str(major),str(minor)]))
@@ -198,10 +121,9 @@ class DBPFException(Exception): pass
 
 if __name__ == '__main__':
 	import sys
+	import tgi
 	db = DBPF(sys.argv[1])
-	db.load()
-	for r in db:
-		f = db[r]
-		print r, len(f)
+	for r in db.records:
+		print tgi.TGI(*r)
 	if len(sys.argv) > 2:
 		db.save(open(sys.argv[2],"wb"))
