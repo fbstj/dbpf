@@ -2,7 +2,7 @@ import struct
 import array
 from collections import namedtuple
 
-Header = struct.Struct("4s17L24s")
+Header = struct.Struct("<4s17L24s")
 class Index(namedtuple("DBPF_Index", 'version count offset size')): pass
 class Record(namedtuple("DBPF_Record", 'type group instance offset length size raw')): pass
 
