@@ -1,4 +1,4 @@
-A file for reading and writing [DBPF](http://en.wikipedia.org/wiki/DBPF_(file_format) files
+A file for reading and writing [DBPF](http://en.wikipedia.org/wiki/DBPF_(file_format)) files
 
 DBPF(fd):
 	takes a file and parses the first 96 bytes, checking to make sure it is a DBPF.
